@@ -26,15 +26,15 @@ spec:
           env:
             - name: FLASK_ENV
               value: {{ .Values.backend.env.FLASK_ENV }}
-            - name: DB_HOST
-              value: {{ .Values.backend.env.DB_HOST }}
-            - name: DB_PORT
-              value: {{ .Values.backend.env.DB_PORT | quote }}
-            - name: DB_NAME
-              value: {{ .Values.backend.env.DB_NAME }}
-            - name: DB_USER
-              value: {{ .Values.backend.env.DB_USER }}
-            - name: DB_PASSWORD
+            - name: MYSQL_HOST
+              value: {{ .Values.backend.env.MYSQL_HOST }}
+            - name: MYSQL_PORT
+              value: {{ .Values.backend.env.MYSQL_PORT | quote }}
+            - name: MYSQL_DATABASE
+              value: {{ .Values.backend.env.MYSQL_DATABASE }}
+            - name: MYSQL_USER
+              value: {{ .Values.backend.env.MYSQL_USER }}
+            - name: MYSQL_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mysql-secret
@@ -50,6 +50,6 @@ spec:
             httpGet:
               path: /health
               port: {{ .Values.backend.port }}
-            initialDelaySeconds: 15
+            initialDelaySeconds: 20
             periodSeconds: 10
             failureThreshold: 3
