@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  labels:
+    app: samurai-app
+    component: frontend
+spec:
+  type: {{ .Values.frontend.service.type }}
+  selector:
+    app: samurai-app
+    component: frontend
+  ports:
+    - port: {{ .Values.frontend.service.port }}
+      targetPort: {{ .Values.frontend.port }}
+      nodePort: {{ .Values.frontend.service.nodePort }}
+      protocol: TCP

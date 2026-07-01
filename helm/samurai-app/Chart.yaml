@@ -1,0 +1,6 @@
+apiVersion: v2
+name: samurai-app
+description: Samurai Themed E-Commerce Store — Backend + Frontend + MySQL
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

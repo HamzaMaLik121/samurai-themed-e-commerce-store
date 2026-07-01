@@ -1,0 +1,24 @@
+# argocd-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: samurai-app
+  namespace: argocd         # ArgoCD itself lives here
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/HamzaMaLik121/samurai-themed-e-commerce-store.git
+    targetRevision: main
+    path: helm/samurai-app  # ← points to your Helm chart folder
+    helm:
+      valueFiles:
+        - values.yaml       # ← ArgoCD reads this for image tags
+  destination:
+    server: https://kubernetes.default.svc   # ← the KinD cluster
+    namespace: samurai                        # ← deploys app here
+  syncPolicy:
+    automated:
+      prune: true           # delete removed resources
+      selfHeal: true        # revert manual kubectl changes
+    syncOptions:
+      - CreateNamespace=true  

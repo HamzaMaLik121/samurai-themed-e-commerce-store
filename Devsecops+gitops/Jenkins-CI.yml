@@ -1,0 +1,224 @@
+pipeline {
+    agent { label 'hamza-agent' }
+
+    environment {
+        SONAR_PROJECT_KEY   = 'samurai-ecommerce-app'
+        SONAR_HOST_URL      = 'http://172.31.33.116:9000'
+        DOCKER_HUB_USER     = 'hamzamalik1'
+        BACKEND_IMAGE       = "${DOCKER_HUB_USER}/samurai-backend"
+        FRONTEND_IMAGE      = "${DOCKER_HUB_USER}/samurai-frontend"
+
+        // ❌ REMOVED: IMAGE_TAG from here — GIT_COMMIT is null at this point
+        //    It is now set inside the Checkout stage after git runs
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────
+        // STAGE 1 — Checkout
+        // ─────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    credentialsId: 'github-creds',
+                    url: 'https://github.com/HamzaMaLik121/samurai-themed-e-commerce-store.git'
+
+                script {
+                 // ✅ Ask git directly — works 100% of the time
+                    def shortSha = sh(
+                        script: 'git rev-parse --short=7 HEAD',
+                        returnStdout: true
+                    ).trim()
+                    env.IMAGE_TAG = "sha-${shortSha}"
+                    echo "✅ Checkout done"
+                    echo "🏷️  Image tag: ${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────
+        // STAGE 2 — SAST: SonarQube Scan
+        // ─────────────────────────────────────────
+        stage('SAST - SonarQube Scan') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh """
+                        ${tool 'SonarQube Scanner'}/bin/sonar-scanner \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.projectName='Samurai E-Commerce App' \
+                          -Dsonar.sources=backend,frontend/src \
+                          -Dsonar.python.version=3 \
+                          -Dsonar.host.url=${SONAR_HOST_URL} \
+                          -Dsonar.exclusions=frontend/node_modules/**,backend/__pycache__/**,database/**
+                    """
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────
+        // STAGE 3 — SCA: OWASP Dependency Check
+        // ─────────────────────────────────────────
+        stage('SCA - OWASP Dependency Check') {
+            steps {
+                withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+                    script {
+                        sh 'mkdir -p reports/owasp'
+                        dependencyCheck(
+                            additionalArguments: """
+                                --scan backend/requirements.txt \
+                                --scan frontend/package.json \
+                                --format HTML \
+                                --format JSON \
+                                --format XML \
+                                --out reports/owasp \
+                                --nvdApiKey ${NVD_API_KEY} \
+                                --nvdApiDelay 4000
+                            """,
+                            odcInstallation: 'OWASP-DC'
+                        )
+                    }
+                }
+            }
+            post {
+                always {
+                    dependencyCheckPublisher pattern: 'reports/owasp/dependency-check-report.xml'
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────
+        // STAGE 4 — SonarQube Quality Gate
+        // ─────────────────────────────────────────
+        stage('SonarQube Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────
+        // STAGE 5 — Docker Build
+        // ─────────────────────────────────────────
+        stage('Docker Build') {
+            steps {
+                sh """
+                    echo "🔨 Building backend image..."
+                    docker build -t ${BACKEND_IMAGE}:${env.IMAGE_TAG} ./backend
+
+                    echo "🔨 Building frontend image..."
+                    docker build -t ${FRONTEND_IMAGE}:${env.IMAGE_TAG} ./frontend
+
+                    echo "✅ Images built:"
+                    docker images | grep samurai
+                """
+            }
+        }
+
+        // ─────────────────────────────────────────
+        // STAGE 6 — Image Scan: Trivy
+        // ─────────────────────────────────────────
+        stage('Image Scan - Trivy') {
+            steps {
+                sh """
+                    mkdir -p reports/trivy
+
+                    echo "🔍 Scanning backend image..."
+                    trivy image \
+                      --exit-code 0 \
+                      --severity CRITICAL,HIGH \
+                      --ignore-unfixed \
+                      --format table \
+                      --output reports/trivy/backend-scan.txt \
+                      ${BACKEND_IMAGE}:${env.IMAGE_TAG}
+
+                    echo "🔍 Scanning frontend image..."
+                    trivy image \
+                      --exit-code 1 \
+                      --severity CRITICAL,HIGH \
+                      --format table \
+                      --output reports/trivy/frontend-scan.txt \
+                      ${FRONTEND_IMAGE}:${env.IMAGE_TAG}
+
+                    echo "✅ Trivy scans passed"
+                """
+            }
+        }
+
+        // ─────────────────────────────────────────
+        // STAGE 7 — Push to Docker Hub
+        // ─────────────────────────────────────────
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+                        echo "⬆️  Pushing backend..."
+                        docker push ${BACKEND_IMAGE}:${env.IMAGE_TAG}
+
+                        echo "⬆️  Pushing frontend..."
+                        docker push ${FRONTEND_IMAGE}:${env.IMAGE_TAG}
+
+                        echo "✅ Both images pushed to Docker Hub"
+                        docker logout
+                    """
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────
+        // STAGE 8 — Publish Reports
+        // ─────────────────────────────────────────
+        stage('Publish Reports') {
+            steps {
+                echo "📋 Archiving scan reports..."
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
+                }
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────
+    // POST — Pipeline level
+    // ─────────────────────────────────────────────
+    post {
+        success {
+            echo """
+            ╔══════════════════════════════════════╗
+            ║   ✅ CI PIPELINE PASSED              ║
+            ║   Image Tag: ${env.IMAGE_TAG}        ║
+            ╚══════════════════════════════════════╝
+            """
+        }
+        failure {
+            echo """
+            ╔══════════════════════════════════════╗
+            ║   ❌ CI PIPELINE FAILED              ║
+            ║   Check stage logs above             ║
+            ╚══════════════════════════════════════╝
+            """
+        }
+        always {
+            // ✅ FIX: null guard — only clean up if IMAGE_TAG was actually set
+            // If pipeline crashed before Checkout, these vars don't exist yet
+            script {
+                if (env.IMAGE_TAG) {
+                    sh """
+                        docker rmi ${BACKEND_IMAGE}:${env.IMAGE_TAG} || true
+                        docker rmi ${FRONTEND_IMAGE}:${env.IMAGE_TAG} || true
+                    """
+                } else {
+                    echo "⚠️ IMAGE_TAG not set — skipping Docker cleanup"
+                }
+            }
+        }
+    }
+}

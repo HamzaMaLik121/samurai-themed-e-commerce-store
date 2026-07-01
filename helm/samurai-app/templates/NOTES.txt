@@ -1,0 +1,67 @@
+🎌 Samurai E-Commerce Store — deployed successfully!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Release:    {{ .Release.Name }}
+  Namespace:  {{ .Release.Namespace }}
+  Chart:      {{ .Chart.Name }} v{{ .Chart.Version }}
+  App:        {{ .Chart.AppVersion }}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. ACCESS THE FRONTEND
+──────────────────────
+  The frontend is exposed via NodePort on port {{ .Values.frontend.service.nodePort }}.
+
+  In a local KinD/Minikube cluster, get the node IP:
+    export NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+
+  Then open in your browser:
+    http://$NODE_IP:{{ .Values.frontend.service.nodePort }}
+
+  Or port-forward directly (no node IP needed):
+    kubectl port-forward svc/frontend-service {{ .Values.frontend.service.port }}:{{ .Values.frontend.service.port }}
+    → Open http://localhost:{{ .Values.frontend.service.port }}
+
+2. BACKEND API
+──────────────────────
+  The backend is internal-only (ClusterIP). Access it via port-forward:
+    kubectl port-forward svc/backend-service {{ .Values.backend.service.port }}:{{ .Values.backend.service.port }}
+
+  Health check:
+    curl http://localhost:{{ .Values.backend.service.port }}/health
+
+3. MYSQL DATABASE
+──────────────────────
+  Internal host:  {{ .Values.backend.env.DB_HOST }}
+  Port:           {{ .Values.backend.env.DB_PORT }}
+  Database:       {{ .Values.mysql.database }}
+  User:           {{ .Values.mysql.user }}
+
+  Connect from a temporary pod:
+    kubectl run mysql-client --rm -it --image=mysql:8.0 --restart=Never -- \
+      mysql -h {{ .Values.backend.env.DB_HOST }} -u {{ .Values.mysql.user }} -p \
+      {{ .Values.mysql.database }}
+
+4. CHECK STATUS
+──────────────────────
+    kubectl get all -l app=samurai-app
+    kubectl get pods -l app=samurai-app -w
+
+5. UPDATE IMAGES (CI Pipeline)
+──────────────────────
+  Override backend/frontend image tags without editing values.yaml:
+
+    helm upgrade {{ .Release.Name }} helm/samurai-app \
+      --set backend.image.tag=sha-abc1234 \
+      --set frontend.image.tag=sha-def5678
+
+6. ENABLE INGRESS
+──────────────────────
+  Set ingress.enabled=true and ensure an ingress controller is running:
+
+    helm upgrade {{ .Release.Name }} helm/samurai-app --set ingress.enabled=true
+
+7. UNINSTALL
+──────────────────────
+    helm uninstall {{ .Release.Name }}
+
+Thank you for using the Samurai E-Commerce Store! 🗡️

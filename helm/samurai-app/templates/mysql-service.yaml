@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  labels:
+    app: samurai-app
+    component: mysql
+spec:
+  type: ClusterIP           # Internal only — backend connects via mysql-service:3306
+  selector:
+    app: samurai-app
+    component: mysql
+  ports:
+    - port: {{ .Values.mysql.service.port }}
+      targetPort: {{ .Values.mysql.port }}
+      protocol: TCP
