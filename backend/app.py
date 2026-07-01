@@ -39,12 +39,21 @@ def create_app() -> Flask:
     def health():
         return jsonify({'status': 'ok'})
 
-    # Seed admin on first request
-    with app.app_context():
-        _seed_admin()
+    # # Seed admin on first request
+    # with app.app_context():
+    #     _seed_admin()
 
     return app
+def create_app():
+    app = Flask(__name__)
+    app.config.from_object(Config)
+    db.init_app(app)
 
+    with app.app_context():
+        db.create_all()    # ← creates all tables first
+        _seed_admin()      # ← then seeds data
+
+    return app
 
 def _seed_admin():
     """Ensure the admin user exists on startup with the correct password hash.
