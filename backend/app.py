@@ -39,33 +39,20 @@ def create_app() -> Flask:
     def health():
         return jsonify({'status': 'ok'})
 
-    # # Seed admin on first request
-    # with app.app_context():
-    #     _seed_admin()
-
-    return app
-def create_app():
-    app = Flask(__name__)
-    app.config.from_object(Config)
-    db.init_app(app)
-
+    # Create tables and seed admin
     with app.app_context():
-        db.create_all()    # ← creates all tables first
-        _seed_admin()      # ← then seeds data
+        db.create_all()   # creates all tables first
+        _seed_admin()     # then seeds admin user
 
     return app
+
 
 def _seed_admin():
-    """Ensure the admin user exists on startup with the correct password hash.
-
-    Note: seed.sql inserts a placeholder hash that is not a valid werkzeug hash,
-    so we always update the password to guarantee the admin can log in.
-    """
+    """Ensure the admin user exists on startup with the correct password hash."""
     from models.user import User
 
     admin = User.query.filter_by(email='admin@bushido.com').first()
     if admin:
-        # Update password hash (seed.sql has a fake placeholder)
         admin.password_hash = generate_password_hash('bushido2026')
     else:
         admin = User(
