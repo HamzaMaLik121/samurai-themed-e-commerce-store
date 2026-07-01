@@ -12,7 +12,7 @@ spec:
       app: samurai-app
       component: mysql
   strategy:
-    type: Recreate          # Required for PVC — only one pod can mount RWO at a time
+    type: Recreate
   template:
     metadata:
       labels:
