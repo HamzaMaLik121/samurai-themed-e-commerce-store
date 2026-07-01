@@ -41,10 +41,10 @@ frontend:
     tag: latest          # ← CI will override this with sha-<commit>
     pullPolicy: Always
   replicas: 1
-  port: 80
+  port: 3000
   service:
     type: NodePort
-    port: 80
+    port: 3000
     nodePort: 30080      # Access app at http://<ec2-ip>:30080
   resources:
     requests:
