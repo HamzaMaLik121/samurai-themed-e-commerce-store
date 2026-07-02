@@ -189,36 +189,39 @@ pipeline {
     // ─────────────────────────────────────────────
     // POST — Pipeline level
     // ─────────────────────────────────────────────
-    post {
-        success {
-            echo """
-            ╔══════════════════════════════════════╗
-            ║   ✅ CI PIPELINE PASSED              ║
-            ║   Image Tag: ${env.IMAGE_TAG}        ║
-            ╚══════════════════════════════════════╝
-            """
-        }
-        failure {
-            echo """
-            ╔══════════════════════════════════════╗
-            ║   ❌ CI PIPELINE FAILED              ║
-            ║   Check stage logs above             ║
-            ╚══════════════════════════════════════╝
-            """
-        }
-        always {
-            // ✅ FIX: null guard — only clean up if IMAGE_TAG was actually set
-            // If pipeline crashed before Checkout, these vars don't exist yet
-            script {
-                if (env.IMAGE_TAG) {
-                    sh """
-                        docker rmi ${BACKEND_IMAGE}:${env.IMAGE_TAG} || true
-                        docker rmi ${FRONTEND_IMAGE}:${env.IMAGE_TAG} || true
-                    """
-                } else {
-                    echo "⚠️ IMAGE_TAG not set — skipping Docker cleanup"
+            post {
+            success {
+                echo """
+                ╔══════════════════════════════════════╗
+                ║   ✅ CI PIPELINE PASSED              ║
+                ║   Image Tag: ${env.IMAGE_TAG}        ║
+                ╚══════════════════════════════════════╝
+                """
+                build job: 'samurai-cd',
+                    parameters: [
+                        string(name: 'IMAGE_TAG', value: env.IMAGE_TAG)
+                    ],
+                    wait: false
+            }
+            failure {
+                echo """
+                ╔══════════════════════════════════════╗
+                ║   ❌ CI PIPELINE FAILED              ║
+                ║   Check stage logs above             ║
+                ╚══════════════════════════════════════╝
+                """
+            }
+            always {
+                script {
+                    if (env.IMAGE_TAG) {
+                        sh """
+                            docker rmi ${BACKEND_IMAGE}:${env.IMAGE_TAG} || true
+                            docker rmi ${FRONTEND_IMAGE}:${env.IMAGE_TAG} || true
+                        """
+                    } else {
+                        echo "⚠️ IMAGE_TAG not set — skipping Docker cleanup"
+                    }
                 }
             }
         }
-    }
-}
+    }    
