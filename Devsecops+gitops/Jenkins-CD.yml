@@ -1,1 +1,100 @@
+pipeline {
+    agent { label 'hamza-agent' }
 
+    parameters {
+        string(name: 'IMAGE_TAG', defaultValue: '', description: 'Image tag from CI')
+    }
+
+    stages {
+
+        // ─────────────────────────────────────────
+        // STAGE 1 — Checkout
+        // ─────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    credentialsId: 'github-creds',
+                    url: 'https://github.com/HamzaMaLik121/samurai-themed-e-commerce-store.git'
+
+                echo "✅ Checked out repo"
+                echo "🏷️  Image tag received from CI: ${params.IMAGE_TAG}"
+            }
+        }
+
+        // ─────────────────────────────────────────
+        // STAGE 2 — Update values.yaml
+        // First run:  tag is 'latest'   → first sed catches it
+        // After that: tag is 'sha-xxxx' → second sed catches it
+        // MySQL tag "8.0"               → neither sed touches it ✅
+        // ─────────────────────────────────────────
+        stage('Update Image Tag') {
+            steps {
+                script {
+                    def tag = params.IMAGE_TAG
+                    sh """
+                        echo "📝 Updating values.yaml with tag: ${tag}"
+
+                        sed -i 's|tag: latest|tag: ${tag}|g' helm/samurai-app/values.yaml
+                        sed -i 's|tag: sha-[a-f0-9]*|tag: ${tag}|g' helm/samurai-app/values.yaml
+
+                        echo "✅ values.yaml updated:"
+                        grep 'tag:' helm/samurai-app/values.yaml
+                    """
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────
+        // STAGE 3 — Git Commit and Push
+        // ArgoCD detects this change and deploys
+        // ─────────────────────────────────────────
+        stage('Push to GitHub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'github-creds',
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_PASS'
+                )]) {
+                    script {
+                        def tag = params.IMAGE_TAG
+                        sh """
+                            git config user.email "jenkins@samurai.com"
+                            git config user.name "Jenkins CD"
+
+                            git add helm/samurai-app/values.yaml
+
+                            if git diff --staged --quiet; then
+                                echo "⚠️ No changes — tag already up to date"
+                            else
+                                git commit -m "chore: update image tag to ${tag}"
+                                git push https://\$GIT_USER:\$GIT_PASS@github.com/HamzaMaLik121/samurai-themed-e-commerce-store.git main
+                                echo "✅ Pushed to GitHub"
+                                echo "🔄 ArgoCD will now detect change and deploy"
+                            fi
+                        """
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo """
+            ╔══════════════════════════════════════════════╗
+            ║   ✅ CD PIPELINE PASSED                     ║
+            ║   Tag ${params.IMAGE_TAG} pushed to GitHub  ║
+            ║   ArgoCD syncing now...                     ║
+            ╚══════════════════════════════════════════════╝
+            """
+        }
+        failure {
+            echo """
+            ╔══════════════════════════════════════╗
+            ║   ❌ CD PIPELINE FAILED              ║
+            ║   values.yaml was NOT updated        ║
+            ╚══════════════════════════════════════╝
+            """
+        }
+    }
+}
