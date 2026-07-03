@@ -6,6 +6,6 @@ metadata:
     app: samurai-app
 data:
   01-init.sql: |
-    {{ .Files.Get "initdb/init.sql" | nindent 4 }}
+{{ .Files.Get "initdb/init.sql" | indent 4 }}
   02-seed.sql: |
-    {{ .Files.Get "initdb/seed.sql" | nindent 4 }}
+{{ .Files.Get "initdb/seed.sql" | indent 4 }}
