@@ -74,7 +74,7 @@ flowchart TB
 
     N --> O
     O --> P
-    P -->|annotation[CitiesCache]| Q
+    P -->|CitiesCache annotation| Q
 
     B -->|💥 BROKEN: bad KB ID| R
     R -->|Fault trace| S
@@ -112,7 +112,7 @@ The diagram above visualizes the complete **AIOps observability pipeline** from 
 5. **X-Ray Console** → Visualizes the service map, per-span timelines, and exception details
 6. **Incident Simulation** → Intentionally breaking the knowledge base ID creates a `ValidationException` — the trace map instantly shows the fault is in **Bedrock Agent Runtime**, not the app code
 7. **Root Cause** → The Exceptions tab reveals the exact validation failure (`failed regex pattern [0-9a-zA-Z]+`) — no log files to grep through
-8. **Caching Optimization** → Adding Flask-Caching reduced DynamoDB lookup from 190ms to ~29ms, confirmed with `annotation[CitiesCache]` in X-Ray
+8. **Caching Optimization** → Adding Flask-Caching reduced DynamoDB lookup from 190ms to ~29ms, confirmed with `CitiesCache` annotation in X-Ray
 
 ---
 
