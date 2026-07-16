@@ -1,6 +1,120 @@
 # Observability with OpenTelemetry + AWS X-Ray
 
-Notes from the AWS Training lab "DevOps and AI on AWS: AIOps — Instrument the Application and View Traces on X-Ray," plus how to port the same setup to a self-hosted project.
+> Notes from the AWS Training lab *"DevOps and AI on AWS: AIOps — Instrument the Application and View Traces on X-Ray,"* plus how to port the same setup to a self-hosted project.
+
+---
+
+## AIOps Pipeline Overview
+
+```mermaid
+flowchart TB
+    subgraph USER["👤 User / Client"]
+        A[Browser / Mobile App]
+    end
+
+    subgraph APP["🖥️ Application Layer EC2 Instance"]
+        B["Flask App<br/><small>TravelApp</small>"]
+        C["🧠 Bedrock Runtime<br/><small>LLM Inference</small>"]
+        D["🗄️ DynamoDB<br/><small>City Data</small>"]
+        E["🤖 Bedrock Agent Runtime<br/><small>Knowledge Base</small>"]
+        F["📦 Flask-Caching<br/><small>Redis-like</small>"]
+    end
+
+    subgraph INSTR["🔬 OpenTelemetry Instrumentation"]
+        G["OTel Python SDK<br/><small>auto-instrumentation</small>"]
+        H["Manual Spans<br/><small>span.set_attribute()</small>"]
+        I["⏱️ Opentelemetry-instrument<br/><small>CLI Wrapper</small>"]
+    end
+
+    subgraph COLL["📡 ADOT Collector"]
+        J["📥 OTLP Receiver<br/><small>Port 4317/4318</small>"]
+        K["📥 AWS X-Ray Receiver<br/><small>UDP 2000</small>"]
+        L["⚙️ Batch Processor<br/><small>1s timeout, 50 spans</small>"]
+        M["📤 AWS X-Ray Exporter"]
+    end
+
+    subgraph OBSERVE["🔍 AWS X-Ray Console"]
+        N["🌐 Trace Map<br/><small>Service Graph</small>"]
+        O["📊 Segments Timeline<br/><small>Per-span duration</small>"]
+        P["❌ Exceptions Tab<br/><small>Stack traces</small>"]
+        Q["🏷️ Annotations<br/><small>Custom searchable tags</small>"]
+    end
+
+    subgraph BREAK["💥 AIOps Incident Simulation"]
+        R["🔴 ValidationException<br/><small>knowledgeBaseId failed regex</small>"]
+        S["⬇️ Fault Trace<br/><small>Bedrock Agent Runtime</small>"]
+        T["🎯 Root Cause Identified<br/><small>No log-grepping needed!</small>"]
+    end
+
+    subgraph CACHE["⚡ Caching Optimization"]
+        U["❌ Cache Miss<br/><small>DynamoDB Scan: 190ms</small>"]
+        V["✅ Cache Hit<br/><small>Serves from cache: ~29ms</small>"]
+    end
+
+    %% ── Connections ──
+    A -->|HTTP Requests| B
+    B -->|LLM Calls| C
+    B -->|City Lookup| D
+    B -->|Review Bot| E
+    B -->|Cache Layer| F
+    F -->|Cache Miss| D
+    F -->|Cache Hit| B
+
+    B -.->|auto-instrumented by| I
+    I -.->|wraps Flask| B
+    G -.->|generates spans| B
+    H -.->|custom attributes| B
+
+    G -->|OTLP Protocol| J
+    H -->|OTLP| J
+    J --> L
+    K --> L
+    L --> M
+    M -->|UDP| N
+
+    N --> O
+    O --> P
+    P -->|annotation[CitiesCache]| Q
+
+    B -->|💥 BROKEN: bad KB ID| R
+    R -->|Fault trace| S
+    S -->|Click → Exceptions tab| T
+
+    D -.->|before cache| U
+    F -.->|after cache| V
+
+    %% ── Styling ──
+    classDef app fill:#1a1a2e,stroke:#e94560,stroke-width:3px,color:#fff
+    classDef aws fill:#232f3e,stroke:#ff9900,stroke-width:2px,color:#fff
+    classDef otel fill:#1d3557,stroke:#a8dadc,stroke-width:2px,color:#fff
+    classDef xray fill:#3a0ca3,stroke:#7209b7,stroke-width:2px,color:#fff
+    classDef break fill:#4a0000,stroke:#ff0000,stroke-width:3px,color:#fff
+    classDef cache fill:#1b4332,stroke:#52b788,stroke-width:2px,color:#fff
+    classDef user fill:#6a4c93,stroke:#9d4edd,stroke-width:2px,color:#fff
+
+    class B,C,D,E,F app
+    class J,K,L,M aws
+    class G,H,I otel
+    class N,O,P,Q xray
+    class R,S,T break
+    class U,V cache
+    class A user
+```
+
+## The AIOps Flow Explained
+
+The diagram above visualizes the complete **AIOps observability pipeline** from the AWS training lab:
+
+1. **User Traffic** → Hits the Flask app (TravelApp) running on EC2
+2. **Application** → Calls AWS Bedrock for LLM inference, DynamoDB for city data, and Bedrock Agent Runtime for the review bot knowledge base
+3. **Auto-Instrumentation** → `opentelemetry-instrument` wraps Flask with zero code changes — every HTTP request, boto3 call, and DB query becomes a trace span
+4. **ADOT Collector** → Receives spans via OTLP or the native X-Ray protocol, batches them, and forwards to AWS X-Ray
+5. **X-Ray Console** → Visualizes the service map, per-span timelines, and exception details
+6. **Incident Simulation** → Intentionally breaking the knowledge base ID creates a `ValidationException` — the trace map instantly shows the fault is in **Bedrock Agent Runtime**, not the app code
+7. **Root Cause** → The Exceptions tab reveals the exact validation failure (`failed regex pattern [0-9a-zA-Z]+`) — no log files to grep through
+8. **Caching Optimization** → Adding Flask-Caching reduced DynamoDB lookup from 190ms to ~29ms, confirmed with `annotation[CitiesCache]` in X-Ray
+
+---
 
 ## What is OpenTelemetry (OTel)
 
@@ -151,4 +265,3 @@ Swap the AWS-specific pieces for open-source equivalents:
    ```
 
 4. Open `http://localhost:16686` — same concept as the X-Ray console, shows the trace map across all three services once each is instrumented and traffic flows between them.
-
