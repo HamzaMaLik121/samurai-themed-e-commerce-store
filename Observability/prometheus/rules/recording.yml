@@ -1,0 +1,100 @@
+# ── Prometheus Recording Rules ─────────────────────────────────────────
+# Recording rules pre-compute frequently-needed or expensive queries
+# for faster dashboard loading and reduced query load.
+
+groups:
+  - name: slo_metrics
+    interval: 60s
+    rules:
+      # ── API Availability (SLO Target: 99.9%) ─────────────────────
+      - record: job:http_requests_total:rate5m
+        expr: sum(rate(http_requests_total[5m])) by (job, endpoint, method)
+
+      - record: job:http_errors_total:rate5m
+        expr: sum(rate(http_requests_total{status_code=~"5.."}[5m])) by (job, endpoint)
+
+      - record: job:http_error_ratio:rate5m
+        expr: |
+          job:http_errors_total:rate5m
+          /
+          (job:http_requests_total:rate5m > 0)
+
+      - record: job:http_availability_30d
+        expr: |
+          (1 - (
+            sum(increase(http_requests_total{status_code=~"5.."}[30d]))
+            /
+            sum(increase(http_requests_total[30d]))
+          )) * 100
+
+  - name: latency_metrics
+    interval: 60s
+    rules:
+      # ── Request Latency Percentiles ──────────────────────────────
+      - record: job:http_request_duration_seconds:p50_5m
+        expr: histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job, endpoint))
+
+      - record: job:http_request_duration_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job, endpoint))
+
+      - record: job:http_request_duration_seconds:p99_5m
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job, endpoint))
+
+      - record: job:http_request_duration_seconds:avg_5m
+        expr: |
+          sum(rate(http_request_duration_seconds_sum[5m])) by (job, endpoint)
+          /
+          sum(rate(http_request_duration_seconds_count[5m])) by (job, endpoint)
+
+  - name: business_metrics
+    interval: 60s
+    rules:
+      # ── Order & Revenue ──────────────────────────────────────────
+      - record: job:orders_created_total:rate1h
+        expr: sum(rate(orders_created_total[1h])) by (job)
+
+      - record: job:revenue_total:rate1h
+        expr: sum(rate(order_revenue_total[1h])) by (job, currency)
+
+      - record: job:average_order_value_1h
+        expr: |
+          sum(rate(order_revenue_total[1h]))
+          /
+          sum(rate(orders_created_total[1h]))
+
+      # ── Cart Abandonment ─────────────────────────────────────────
+      - record: job:cart_abandonment_rate_1h
+        expr: |
+          sum(rate(cart_abandoned_total[1h]))
+          /
+          sum(rate(cart_created_total[1h]))
+
+  - name: infrastructure_metrics
+    interval: 60s
+    rules:
+      # ── Resource Utilization ─────────────────────────────────────
+      - record: instance:cpu_utilization:avg5m
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+      - record: instance:memory_utilization:avg5m
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+
+      - record: instance:disk_utilization:avg5m
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100
+
+      # ── Container Health ─────────────────────────────────────────
+      - record: job:container_restart_rate:rate1h
+        expr: sum(rate(container_restarts_total[1h])) by (job, name)
+
+  - name: distributed_tracing
+    interval: 60s
+    rules:
+      # ── Span Metrics (from OTel spanmetrics connector) ──────────
+      - record: job:trace_duration_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum(rate(traces_duration_seconds_bucket[5m])) by (le, job, service))
+
+      - record: job:trace_error_ratio:rate5m
+        expr: |
+          sum(rate(traces_errors_total[5m])) by (job, service)
+          /
+          (sum(rate(traces_total[5m])) by (job, service) > 0)

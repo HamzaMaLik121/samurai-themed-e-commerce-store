@@ -1,0 +1,265 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "title": "Samurai Shop — Business Metrics",
+  "uid": "samurai-business-metrics",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["samurai", "business", "revenue"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["1m", "5m", "15m", "30m", "1h"]
+  },
+  "panels": [
+    {
+      "title": "Orders Created (24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(increase(orders_created_total[24h]))",
+          "legendFormat": "Orders"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Revenue (24h)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(increase(order_revenue_total[24h]))",
+          "legendFormat": "Revenue"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Avg Order Value",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(increase(order_revenue_total[24h])) / sum(increase(orders_created_total[24h]))",
+          "legendFormat": "AOV"
+        }
+      ],
+      "options": {
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "title": "Conversion Rate",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "(sum(increase(orders_created_total[1h])) / sum(increase(page_views_total{page=\"checkout\"}[1h]))) * 100",
+          "legendFormat": "Conversion"
+        }
+      ],
+      "options": {
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "title": "Cart Abandonment Rate",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "expr": "(sum(increase(cart_abandoned_total[24h])) / sum(increase(cart_created_total[24h]))) * 100",
+          "legendFormat": "Abandonment"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "red", "value": 75 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Active Users",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(active_sessions_total)",
+          "legendFormat": "Users"
+        }
+      ],
+      "options": {
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "title": "Orders Over Time",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(orders_created_total[1h]))",
+          "legendFormat": "Orders/s"
+        }
+      ],
+      "options": {
+        "legend": { "show": true }
+      }
+    },
+    {
+      "title": "Revenue Over Time",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(order_revenue_total[1h]))",
+          "legendFormat": "Revenue/s"
+        }
+      ],
+      "options": {
+        "legend": { "show": true }
+      }
+    },
+    {
+      "title": "Top Products (24h)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "topk(10, sum(increase(product_views_total[24h])) by (product_id))",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "options": {
+        "sortBy": [{ "displayName": "Value", "desc": true }]
+      }
+    },
+    {
+      "title": "Checkout Funnel",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "sum(rate(page_views_total{page=\"cart\"}[1h]))",
+          "legendFormat": "Cart Views"
+        },
+        {
+          "expr": "sum(rate(page_views_total{page=\"checkout\"}[1h]))",
+          "legendFormat": "Checkout Views"
+        },
+        {
+          "expr": "sum(rate(orders_created_total[1h]))",
+          "legendFormat": "Orders"
+        }
+      ],
+      "options": {
+        "legend": { "show": true }
+      }
+    }
+  ]
+}

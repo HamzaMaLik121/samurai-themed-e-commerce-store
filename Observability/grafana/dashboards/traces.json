@@ -1,0 +1,101 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "title": "Samurai Shop — Distributed Tracing",
+  "uid": "samurai-distributed-tracing",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["samurai", "traces", "tempo"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "1m",
+  "time": {
+    "from": "now-2h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["30s", "1m", "5m", "15m", "30m"]
+  },
+  "panels": [
+    {
+      "title": "Trace Rate",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(traces_total[5m]))",
+          "legendFormat": "Traces/s"
+        },
+        {
+          "expr": "sum(rate(traces_errors_total[5m]))",
+          "legendFormat": "Errors/s"
+        }
+      ],
+      "options": {
+        "legend": { "show": true }
+      }
+    },
+    {
+      "title": "Trace Duration (P95)",
+      "type": "graph",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(traces_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P95"
+        }
+      ],
+      "options": {
+        "legend": { "show": true }
+      }
+    },
+    {
+      "title": "Service Map",
+      "type": "text",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "options": {
+        "content": "<div style=\"display:flex;justify-content:center;align-items:center;height:100%;font-size:1.2rem;color:#aaa;\">\n  <div style=\"text-align:center\">\n    <h3>Service Graph</h3>\n    <p>Use Grafana Explore with Tempo datasource<br/>to view the full service graph.</p>\n    <p><code>Explore → Tempo → Service Graph</code></p>\n  </div>\n</div>",
+        "mode": "html"
+      }
+    },
+    {
+      "title": "Spans by Service",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "topk(10, sum(rate(traces_total[5m])) by (service))",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "options": {
+        "sortBy": [{ "displayName": "Value", "desc": true }]
+      }
+    },
+    {
+      "title": "Error Traces (Last Hour)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "topk(10, sum(increase(traces_errors_total[1h])) by (service, span.name))",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "options": {
+        "sortBy": [{ "displayName": "Value", "desc": true }]
+      }
+    },
+    {
+      "title": "Recent Traces",
+      "type": "text",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "options": {
+        "content": "<div style=\"display:flex;justify-content:center;align-items:center;height:100%;font-size:1.2rem;color:#aaa;\">\n  <div style=\"text-align:center\">\n    <h3>Search Recent Traces</h3>\n    <p>Open <strong>Explore</strong> and select the <strong>Tempo</strong> datasource<br/>to search and inspect individual traces.</p>\n    <p><strong>Query:</strong> <code>{service.name=\"samurai-backend\"}</code></p>\n  </div>\n</div>",
+        "mode": "html"
+      }
+    }
+  ]
+}

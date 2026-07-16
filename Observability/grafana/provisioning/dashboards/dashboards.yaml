@@ -1,0 +1,16 @@
+# ── Grafana Auto-Provisioning: Dashboard Providers ─────────────────────
+
+apiVersion: 1
+
+providers:
+  - name: "Samurai Observability"
+    orgId: 1
+    folder: "Samurai Shop"
+    folderUid: "samurai"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
