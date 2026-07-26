@@ -8,7 +8,7 @@
 # ─────────────────────────────────────────
 backend:
   image:
-    repository: hamzamalik1/samurai-backend
+    repository: 839706991042.dkr.ecr.us-east-1.amazonaws.com/samurai/backend-flask
     tag: sha-48946d2
     pullPolicy: Always
   replicas: 1
@@ -35,7 +35,7 @@ backend:
 # ─────────────────────────────────────────
 frontend:
   image:
-    repository: hamzamalik1/samurai-frontend
+    repository: 839706991042.dkr.ecr.us-east-1.amazonaws.com/samurai/frontend-react
     tag: sha-48946d2
     pullPolicy: Always
   replicas: 1
