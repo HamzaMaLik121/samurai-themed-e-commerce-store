@@ -1,0 +1,124 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  tolerations:
+    - key: "workload-type"
+      operator: "Equal"
+      value: "jenkins-agent"
+      effect: "NoSchedule"
+  nodeSelector:
+    workload-type: jenkins-agent
+  containers:
+    - name: build-agent
+      image: 839706991042.dkr.ecr.us-east-1.amazonaws.com/samurai/jenkins-agent:latest
+      command: ['cat']
+      tty: true
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+"""
+            defaultContainer 'build-agent'
+        }
+    }
+
+    parameters {
+        // Filled in automatically by CI's "build job" trigger.
+        // Should never be typed in manually via "Build with Parameters" during normal operation.
+        string(name: 'IMAGE_TAG', defaultValue: '', description: 'Image tag — auto-passed by CI pipeline, do not fill in manually')
+    }
+
+    stages {
+
+        stage('Validate Input') {
+            steps {
+                script {
+                    if (!params.IMAGE_TAG?.trim()) {
+                        error("❌ IMAGE_TAG is empty. This job should only be triggered automatically by the CI pipeline, which always supplies a real tag. Aborting to avoid corrupting values.yaml.")
+                    }
+                    echo "✅ IMAGE_TAG received automatically from CI: ${params.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    credentialsId: 'github-creds',
+                    url: 'https://github.com/HamzaMaLik121/samurai-themed-e-commerce-store.git'
+                echo "🏷️  Image tag received from CI: ${params.IMAGE_TAG}"
+            }
+        }
+
+        stage('Update Image Tag') {
+            steps {
+                sh """
+                    echo "📝 Updating values.yaml with tag: ${params.IMAGE_TAG}"
+
+                    awk '
+                        /repository:.*samurai\\/(backend-flask|frontend-react)/ { print; getline; sub(/tag:.*/, "tag: ${params.IMAGE_TAG}"); print; next }
+                        { print }
+                    ' helm/samurai-app/values.yaml > helm/samurai-app/values.yaml.tmp
+
+                    mv helm/samurai-app/values.yaml.tmp helm/samurai-app/values.yaml
+
+                    echo "✅ values.yaml updated:"
+                    grep -A1 'repository:.*samurai/' helm/samurai-app/values.yaml
+                """
+            }
+        }
+
+        stage('Verify No Blank Tags') {
+            steps {
+                sh """
+                    echo "🔎 Checking for any blank tag: fields..."
+                    if grep -E '^\\s*tag:\\s*\$' helm/samurai-app/values.yaml; then
+                        echo "❌ Found a blank tag field — aborting before push"
+                        exit 1
+                    fi
+                    echo "✅ No blank tags found"
+                """
+            }
+        }
+
+        stage('Push to GitHub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'github-creds',
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_PASS'
+                )]) {
+                    sh """
+                        git config user.email "jenkins@samurai.com"
+                        git config user.name "Jenkins CD"
+                        git add helm/samurai-app/values.yaml
+
+                        if git diff --staged --quiet; then
+                            echo "⚠️ No changes — tag already up to date"
+                        else
+                            git commit -m "chore: update image tag to ${params.IMAGE_TAG}"
+                            git push https://\$GIT_USER:\$GIT_PASS@github.com/HamzaMaLik121/samurai-themed-e-commerce-store.git main
+                            echo "✅ Pushed — ArgoCD will detect and sync automatically"
+                        fi
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ CD PIPELINE PASSED — Tag ${params.IMAGE_TAG} pushed. ArgoCD syncing now."
+        }
+        failure {
+            echo "❌ CD PIPELINE FAILED — values.yaml was NOT updated"
+        }
+    }
+}
