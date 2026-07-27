@@ -1,0 +1,201 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  tolerations:
+    - key: "workload-type"
+      operator: "Equal"
+      value: "jenkins-agent"
+      effect: "NoSchedule"
+  nodeSelector:
+    workload-type: jenkins-agent
+  containers:
+    - name: build-agent
+      image: 839706991042.dkr.ecr.us-east-1.amazonaws.com/samurai/jenkins-agent:latest
+      command: ['cat']
+      tty: true
+      resources:
+        requests:
+          cpu: "1"
+          memory: "2Gi"
+        limits:
+          cpu: "2"
+          memory: "4Gi"
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+  volumes:
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
+"""
+            defaultContainer 'build-agent'
+        }
+    }
+
+    environment {
+        ECR_REGISTRY       = '839706991042.dkr.ecr.us-east-1.amazonaws.com'
+        AWS_DEFAULT_REGION = 'us-east-1'
+        SONAR_PROJECT_KEY  = 'samurai-ecommerce-app'
+        SONAR_HOST_URL     = 'http://10.0.0.228:9000'
+        BACKEND_IMAGE      = "${ECR_REGISTRY}/samurai/backend-flask"
+        FRONTEND_IMAGE     = "${ECR_REGISTRY}/samurai/frontend-react"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    credentialsId: 'github-creds',
+                    url: 'https://github.com/HamzaMaLik121/samurai-themed-e-commerce-store.git'
+
+                script {
+                    // SHA tag is computed automatically here — no manual input ever needed.
+                    def shortSha = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
+                    env.IMAGE_TAG = "sha-${shortSha}"
+                    echo "✅ Checkout done"
+                    echo "🏷️  Image tag: ${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('SAST - SonarQube Scan') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh """
+                        sonar-scanner \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.projectName='Samurai E-Commerce App' \
+                          -Dsonar.sources=backend,frontend/src \
+                          -Dsonar.python.version=3 \
+                          -Dsonar.host.url=${SONAR_HOST_URL} \
+                          -Dsonar.exclusions=frontend/node_modules/**,backend/__pycache__/**,database/**
+                    """
+                }
+            }
+        }
+
+        stage('SCA - OWASP Dependency Check') {
+            steps {
+                withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+                    sh """
+                        mkdir -p reports/owasp
+                        mkdir -p ${WORKSPACE}/dc-data
+                        dependency-check.sh \
+                          --project samurai \
+                          --scan backend/requirements.txt \
+                          --scan frontend/package.json \
+                          --format HTML \
+                          --format JSON \
+                          --format XML \
+                          --out reports/owasp \
+                          --data ${WORKSPACE}/dc-data \
+                          --nvdApiKey ${NVD_API_KEY} \
+                          --nvdApiDelay 4000
+                    """
+                }
+            }
+        }
+
+        stage('SonarQube Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh """
+                    echo "🔨 Building backend image..."
+                    docker build -t ${BACKEND_IMAGE}:${env.IMAGE_TAG} ./backend
+
+                    echo "🔨 Building frontend image..."
+                    docker build -t ${FRONTEND_IMAGE}:${env.IMAGE_TAG} ./frontend
+
+                    docker images | grep samurai
+                """
+            }
+        }
+
+        stage('Image Scan - Trivy') {
+            steps {
+                sh """
+                    mkdir -p reports/trivy
+
+                    echo "🔍 Scanning backend image..."
+                    trivy image --exit-code 0 --severity CRITICAL,HIGH --ignore-unfixed \
+                      --format table --output reports/trivy/backend-scan.txt \
+                      ${BACKEND_IMAGE}:${env.IMAGE_TAG}
+
+                    echo "🔍 Scanning frontend image..."
+                    trivy image --exit-code 1 --severity CRITICAL,HIGH \
+                      --format table --output reports/trivy/frontend-scan.txt \
+                      ${FRONTEND_IMAGE}:${env.IMAGE_TAG}
+                """
+            }
+        }
+
+        stage('Push to ECR') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'aws-ecr-creds',
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                )]) {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | \
+                        docker login --username AWS --password-stdin ${ECR_REGISTRY}
+
+                        echo "⬆️  Pushing backend..."
+                        docker push ${BACKEND_IMAGE}:${env.IMAGE_TAG}
+
+                        echo "⬆️  Pushing frontend..."
+                        docker push ${FRONTEND_IMAGE}:${env.IMAGE_TAG}
+
+                        echo "✅ Both images pushed to ECR"
+                    """
+                }
+            }
+        }
+
+        stage('Publish Reports') {
+            steps {
+                echo "📋 Archiving scan reports..."
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ CI PIPELINE PASSED — Image Tag: ${env.IMAGE_TAG}"
+            echo "🚀 Auto-triggering CD pipeline with IMAGE_TAG=${env.IMAGE_TAG} — no manual input required"
+            build job: 'samurai-cd',
+                parameters: [string(name: 'IMAGE_TAG', value: env.IMAGE_TAG)],
+                wait: false
+        }
+        failure {
+            echo "❌ CI PIPELINE FAILED — check stage logs above. CD will NOT be triggered."
+        }
+        always {
+            script {
+                if (env.IMAGE_TAG) {
+                    sh """
+                        docker rmi ${BACKEND_IMAGE}:${env.IMAGE_TAG} || true
+                        docker rmi ${FRONTEND_IMAGE}:${env.IMAGE_TAG} || true
+                    """
+                }
+            }
+        }
+    }
+}
